@@ -1,18 +1,20 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require("dotenv").config();
 
+import * as fs from 'fs';
 import * as http from "http";
+import * as path from 'path';
 
 import { logger, runningMessage, setupLogger } from "./Logging";
 
 import { BaseRouteConfig } from "./routes/Base.Routes";
 import { DB } from "./Database";
+import { TestRoute } from "./routes/TestRoute.Routes";
 import cors from "cors";
 import express from "express";
 
 const app: express.Application = express();
 const server: http.Server = http.createServer(app);
-const routes: BaseRouteConfig[] = [];
 
 app.use(express.json());
 app.use(cors());
@@ -36,6 +38,24 @@ function authMiddleware(req: express.Request, res: express.Response, next) {
 	}
 }
 app.use(authMiddleware);
+
+const routes:BaseRouteConfig[] = [];
+
+//Dynamically add routes
+const routesPath = path.join(__dirname, 'routes');
+fs.readdirSync(routesPath).forEach(file => {
+  if (file.endsWith('.Routes.ts') || file.endsWith('.Routes.js')) {
+    const routeModule = require(path.join(routesPath, file));
+    const RouteClass = Object.values(routeModule).find(
+      (exportedItem): exportedItem is new (app: express.Application) => BaseRouteConfig =>
+        typeof exportedItem === 'function' &&
+        exportedItem.prototype instanceof BaseRouteConfig
+    );
+    if (RouteClass) {
+      routes.push(new RouteClass(app));
+    }
+  }
+});
 
 app.get("/", (req: express.Request, res: express.Response) => {
 	res.status(200).send(runningMessage);
